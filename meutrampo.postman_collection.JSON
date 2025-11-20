@@ -1,0 +1,230 @@
+{
+  "info": {
+    "_postman_id": "b9e1f2a9-6e2a-4b1f-9bda-2a7c9e6f8f4c",
+    "name": "FIWARE - PIR (auto ON) + Lamp (Postman)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "IOT Agent MQTT",
+      "item": [
+        {
+          "name": "1. Health Check (IoT Agent)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "http://{{url}}:4041/iot/about",
+              "protocol": "http",
+              "host": [
+                "{{url}}"
+              ],
+              "port": "4041",
+              "path": [
+                "iot",
+                "about"
+              ]
+            }
+          }
+        },
+        {
+          "name": "2. Provision Service Group (MQTT TEF)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "fiware-service", "value": "smart" },
+              { "key": "fiware-servicepath", "value": "/" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"services\": [\n    {\n      \"apikey\": \"TEF\",\n      \"cbroker\": \"http://{{url}}:1026\",\n      \"entity_type\": \"Lamp\",\n      \"resource\": \"\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "http://{{url}}:4041/iot/services",
+              "protocol": "http",
+              "host": [ "{{url}}" ],
+              "port": "4041",
+              "path": [ "iot", "services" ]
+            }
+          }
+        },
+        {
+          "name": "3. Provision Device lamp001 (PIR+Lamp)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "fiware-service", "value": "smart" },
+              { "key": "fiware-servicepath", "value": "/" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"devices\": [\n    {\n      \"device_id\": \"lamp001\",\n      \"entity_name\": \"urn:ngsi-ld:Lamp:001\",\n      \"entity_type\": \"Lamp\",\n      \"protocol\": \"PDI-IoTA-UltraLight\",\n      \"transport\": \"MQTT\",\n      \"commands\": [\n        { \"name\": \"on\", \"type\": \"command\" },\n        { \"name\": \"off\", \"type\": \"command\" }\n      ],\n      \"attributes\": [\n        { \"object_id\": \"s\", \"name\": \"state\", \"type\": \"Text\" },\n        { \"object_id\": \"l\", \"name\": \"luminosity\", \"type\": \"Integer\" },\n        { \"object_id\": \"m\", \"name\": \"motion\", \"type\": \"Integer\" }\n      ]\n    }\n  ]\n}\n"
+            },
+            "url": {
+              "raw": "http://{{url}}:4041/iot/devices",
+              "protocol": "http",
+              "host": [ "{{url}}" ],
+              "port": "4041",
+              "path": [ "iot", "devices" ]
+            }
+          }
+        },
+        {
+          "name": "4. List Devices (IoT Agent)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "fiware-service", "value": "smart" },
+              { "key": "fiware-servicepath", "value": "/" }
+            ],
+            "url": {
+              "raw": "http://{{url}}:4041/iot/devices",
+              "protocol": "http",
+              "host": [ "{{url}}" ],
+              "port": "4041",
+              "path": [ "iot", "devices" ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Orion Context Broker",
+      "item": [
+        {
+          "name": "1. Orion Version",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "http://{{url}}:1026/version",
+              "protocol": "http",
+              "host": [ "{{url}}" ],
+              "port": "1026",
+              "path": [ "version" ]
+            }
+          }
+        },
+        {
+          "name": "2. View Lamp state (Orion)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "fiware-service", "value": "smart" },
+              { "key": "fiware-servicepath", "value": "/" }
+            ],
+            "url": {
+              "raw": "http://{{url}}:1026/v2/entities/urn:ngsi-ld:Lamp:001/attrs/state",
+              "protocol": "http",
+              "host": [ "{{url}}" ],
+              "port": "1026",
+              "path": [ "v2", "entities", "urn:ngsi-ld:Lamp:001", "attrs", "state" ]
+            }
+          }
+        },
+        {
+          "name": "3. Send command ON (Orion -> IoT Agent -> Device)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "fiware-service", "value": "smart" },
+              { "key": "fiware-servicepath", "value": "/" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"on\": { \"type\": \"command\", \"value\": \"\" } }"
+            },
+            "url": {
+              "raw": "http://{{url}}:1026/v2/entities/urn:ngsi-ld:Lamp:001/attrs",
+              "protocol": "http",
+              "host": [ "{{url}}" ],
+              "port": "1026",
+              "path": [ "v2", "entities", "urn:ngsi-ld:Lamp:001", "attrs" ]
+            }
+          }
+        },
+        {
+          "name": "4. Send command OFF (Orion -> IoT Agent -> Device)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "fiware-service", "value": "smart" },
+              { "key": "fiware-servicepath", "value": "/" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"off\": { \"type\": \"command\", \"value\": \"\" } }"
+            },
+            "url": {
+              "raw": "http://{{url}}:1026/v2/entities/urn:ngsi-ld:Lamp:001/attrs",
+              "protocol": "http",
+              "host": [ "{{url}}" ],
+              "port": "1026",
+              "path": [ "v2", "entities", "urn:ngsi-ld:Lamp:001", "attrs" ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "STH Comet (Historian)",
+      "item": [
+        {
+          "name": "1. STH Health",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "http://{{url}}:8666/STH/v1/health",
+              "protocol": "http",
+              "host": [ "{{url}}" ],
+              "port": "8666",
+              "path": [ "STH", "v1", "health" ]
+            }
+          }
+        },
+        {
+          "name": "2. Get lastN motion (Lamp)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "fiware-service", "value": "smart" },
+              { "key": "fiware-servicepath", "value": "/" }
+            ],
+            "url": {
+              "raw": "http://{{url}}:8666/STH/v1/contextEntities/type/Lamp/attributes/motion?lastN=100",
+              "protocol": "http",
+              "host": [ "{{url}}" ],
+              "port": "8666",
+              "path": [ "STH", "v1", "contextEntities", "type", "Lamp", "attributes", "motion" ],
+              "query": [ { "key": "lastN", "value": "100" } ]
+            }
+          }
+        },
+        {
+          "name": "3. Get lastN state (Lamp)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "fiware-service", "value": "smart" },
+              { "key": "fiware-servicepath", "value": "/" }
+            ],
+            "url": {
+              "raw": "http://{{url}}:8666/STH/v1/contextEntities/type/Lamp/attributes/state?lastN=50",
+              "protocol": "http",
+              "host": [ "{{url}}" ],
+              "port": "8666",
+              "path": [ "STH", "v1", "contextEntities", "type", "Lamp", "attributes", "state" ],
+              "query": [ { "key": "lastN", "value": "50" } ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "url", "value": "46.17.108.113" }
+  ]
+}

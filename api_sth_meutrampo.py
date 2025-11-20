@@ -7,6 +7,7 @@ Original file is located at
     https://colab.research.google.com/drive/1QbtBKkwY6e4rTnEfcIACehQyi1qJJBKf
 """
 
+# arquivo: dash_pir_motion_dashboard.py
 import dash
 from dash import dcc, html
 from dash.dependencies import Input, Output, State
@@ -16,20 +17,23 @@ from datetime import datetime, timedelta
 import pytz
 from collections import defaultdict
 
-# Constants for IP and port (STH)
+# Constants for STH
 IP_ADDRESS = "46.17.108.113"
 PORT_STH = 8666
-DASH_HOST = "0.0.0.0"  # set to 0.0.0.0 to access externally
+DASH_HOST = "0.0.0.0"  # para acesso externo
 
-# Set lastN value (how many points to request from STH each interval)
-lastN = 100
+# Quantos pontos históricos pegar por chamada STH
+lastN = 200
 
-def get_response_data(lastN):
+# timezone do usuário — usa America/Sao_Paulo conforme sua preferência
+USER_TZ = pytz.timezone('America/Sao_Paulo')
+
+def get_sth_attribute(entity_type: str, attribute: str, lastN: int):
     """
-    Fetch lastN values of the attribute 'resultado' for entities of type 'Resposta'.
-    Returns list of dicts { 'value': 'Correto'|'Incorreto', 'recvTime': '<timestamp>' }
+    Busca os últimos lastN valores do atributo (STH).
+    Retorna lista de dicts: { 'value': ..., 'recvTime': ... }
     """
-    url = f"http://{IP_ADDRESS}:{PORT_STH}/STH/v1/contextEntities/type/Resposta/attributes/resultado?lastN={lastN}"
+    url = f"http://{IP_ADDRESS}:{PORT_STH}/STH/v1/contextEntities/type/{entity_type}/attributes/{attribute}?lastN={lastN}"
     headers = {
         'fiware-service': 'smart',
         'fiware-servicepath': '/'
@@ -37,56 +41,60 @@ def get_response_data(lastN):
     try:
         r = requests.get(url, headers=headers, timeout=10)
     except Exception as e:
-        print(f"Error requesting STH: {e}")
+        print(f"Erro ao requisitar STH: {e}")
         return []
     if r.status_code != 200:
-        print(f"Error accessing {url}: {r.status_code} - {r.text}")
+        print(f"Erro ao acessar {url}: {r.status_code} - {r.text}")
         return []
 
     data = r.json()
     try:
         values = data['contextResponses'][0]['contextElement']['attributes'][0]['values']
     except Exception as e:
-        print(f"Key error parsing STH response: {e}")
+        print(f"Erro ao parsear resposta STH: {e}")
         return []
 
-    # STH 'values' items are often arrays like: [{ "attrValue": "Correto", "recvTime": "2025-..." }, ...]
     normalized = []
     for entry in values:
-        # sometimes STH may return as [value, recvTime] or object; handle both
         if isinstance(entry, dict):
             val = entry.get('attrValue') or entry.get('value') or entry.get('attrValue')
             recv = entry.get('recvTime') or entry.get('recvtime') or entry.get('time')
             if val is None or recv is None:
-                # try older format: [value, recvTime]
                 continue
             normalized.append({'value': val, 'recvTime': recv})
         elif isinstance(entry, list) and len(entry) >= 2:
             normalized.append({'value': entry[0], 'recvTime': entry[1]})
     return normalized
 
-def convert_to_lisbon_time_str(timestr):
+def parse_utc_timestr_to_tz(timestr: str, tz=USER_TZ):
     """
-    Convert ISO UTC string to timezone-aware datetime in Lisbon.
-    Returns a datetime object.
+    Converte string ISO UTC (p.ex '2025-11-20T12:34:56.789Z') para datetime timezone-aware no fuso tz.
     """
-    utc = pytz.utc
-    lisbon = pytz.timezone('Europe/Lisbon')
-    # Normalize common formats
-    t = timestr.replace('T', ' ').replace('Z', '')
-    for fmt in ('%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%d %H:%M:%S'):
-        try:
-            dt = datetime.strptime(t, fmt)
-            dt = utc.localize(dt).astimezone(lisbon)
-            return dt
-        except ValueError:
-            continue
-    # fallback: parse until seconds
     try:
-        dt = datetime.fromisoformat(timestr.replace('Z', '+00:00'))
-        return dt.astimezone(pytz.timezone('Europe/Lisbon'))
+        # remove Z e tenta parse com micros
+        ts = timestr
+        if ts.endswith("Z"):
+            ts = ts[:-1] + "+00:00"
+        dt = datetime.fromisoformat(ts)
+        # garante aware
+        if dt.tzinfo is None:
+            dt = pytz.utc.localize(dt)
+        dt_local = dt.astimezone(tz)
+        return dt_local
     except Exception:
-        return None
+        # tentativa fallback
+        try:
+            t = timestr.replace('T', ' ').replace('Z', '')
+            for fmt in ('%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%d %H:%M:%S'):
+                try:
+                    dt = datetime.strptime(t, fmt)
+                    dt = pytz.utc.localize(dt).astimezone(tz)
+                    return dt
+                except Exception:
+                    continue
+        except Exception:
+            return None
+    return None
 
 def floor_to_minute(dt):
     return datetime(dt.year, dt.month, dt.day, dt.hour, dt.minute, tzinfo=dt.tzinfo)
@@ -94,94 +102,144 @@ def floor_to_minute(dt):
 app = dash.Dash(__name__)
 
 app.layout = html.Div([
-    html.H1('Quiz — Acertos vs Erros (por minuto)'),
-    dcc.Graph(id='result-graph'),
-    # store aggregated series
-    dcc.Store(id='result-store', data={'timestamps': [], 'correct': [], 'incorrect': []}),
-    dcc.Interval(id='interval-component', interval=10*1000, n_intervals=0)  # 10s
+    html.H1('Movimento (PIR) — Contagem por Minuto'),
+    dcc.Graph(id='motion-graph'),
+    html.Div(id='last-state', style={'marginTop': '10px'}),
+    dcc.Store(id='motion-store', data={'timestamps': [], 'counts': [], 'state_ts': [], 'state_vals': []}),
+    dcc.Interval(id='interval-component', interval=10*1000, n_intervals=0)  # atualiza a cada 10s
 ])
 
 @app.callback(
-    Output('result-store', 'data'),
+    Output('motion-store', 'data'),
     Input('interval-component', 'n_intervals'),
-    State('result-store', 'data')
+    State('motion-store', 'data')
 )
 def update_store(n, stored_data):
-    raw = get_response_data(lastN)
-    if not raw:
-        return stored_data
+    # obter movimentos
+    raw_motion = get_sth_attribute('Lamp', 'motion', lastN)
+    # obter estado atual da lamp (últimos lastN pontos)
+    raw_state = get_sth_attribute('Lamp', 'state', 50)
 
-    # Aggregate counts per minute
-    counts = defaultdict(lambda: {'correct': 0, 'incorrect': 0})
-    for entry in raw:
+    counts = defaultdict(int)
+    for entry in raw_motion:
         val = str(entry['value']).strip()
         recv = entry['recvTime']
-        dt = convert_to_lisbon_time_str(recv)
+        dt = parse_utc_timestr_to_tz(recv)
         if not dt:
             continue
         minute = floor_to_minute(dt)
-        if val.lower().startswith('c'):  # Correto / Correct
-            counts[minute]['correct'] += 1
-        else:
-            counts[minute]['incorrect'] += 1
+        # considerar como movimento válido quando val == '1' ou contém '1'
+        if val == '1' or val.lower().startswith('1') or val.lower().startswith('t'):  # cobre 'True' etc.
+            counts[minute] += 1
 
-    # Merge aggregated counts into stored_data (keep chronological order)
-    # Convert existing stored_data timestamps back to datetime objects (with tzinfo)
+    # existing stored_data -> converter timestamps para datetimes
     existing = {}
     for i, ts in enumerate(stored_data.get('timestamps', [])):
         try:
             dt = datetime.fromisoformat(ts)
-            existing[dt] = {'correct': stored_data['correct'][i], 'incorrect': stored_data['incorrect'][i]}
+            if dt.tzinfo is None:
+                dt = USER_TZ.localize(dt)
+            existing[dt] = stored_data['counts'][i]
         except Exception:
             continue
 
-    # Update/merge
+    # merge counts
     for minute_dt, cnt in counts.items():
         if minute_dt in existing:
-            existing[minute_dt]['correct'] = existing[minute_dt]['correct'] + cnt['correct']
-            existing[minute_dt]['incorrect'] = existing[minute_dt]['incorrect'] + cnt['incorrect']
+            existing[minute_dt] = existing[minute_dt] + cnt
         else:
-            existing[minute_dt] = {'correct': cnt['correct'], 'incorrect': cnt['incorrect']}
+            existing[minute_dt] = cnt
 
-    # Keep only last 120 minutes to avoid infinite growth
+    # adicionar últimos 120 minutos no máximo
     sorted_minutes = sorted(existing.keys())
     if len(sorted_minutes) > 120:
         sorted_minutes = sorted_minutes[-120:]
 
     out_ts = [dt.isoformat() for dt in sorted_minutes]
-    out_correct = [existing[dt]['correct'] for dt in sorted_minutes]
-    out_incorrect = [existing[dt]['incorrect'] for dt in sorted_minutes]
+    out_counts = [existing[dt] for dt in sorted_minutes]
 
-    return {'timestamps': out_ts, 'correct': out_correct, 'incorrect': out_incorrect}
+    # processar estado (pegar último valor conhecido para exibir como série simples)
+    state_ts = []
+    state_vals = []
+    # pegamos últimos pontos de raw_state (se houver)
+    for entry in raw_state:
+        val = str(entry['value']).strip()
+        recv = entry['recvTime']
+        dt = parse_utc_timestr_to_tz(recv)
+        if not dt:
+            continue
+        state_ts.append(dt.isoformat())
+        # normalizar para 1/0
+        if val.lower().startswith('s|on') or val.lower().startswith('on') or val == '1':
+            state_vals.append(1)
+        else:
+            state_vals.append(0)
+
+    # manter apenas últimos 200 pontos de estado
+    if len(state_ts) > 200:
+        state_ts = state_ts[-200:]
+        state_vals = state_vals[-200:]
+
+    return {'timestamps': out_ts, 'counts': out_counts, 'state_ts': state_ts, 'state_vals': state_vals}
 
 @app.callback(
-    Output('result-graph', 'figure'),
-    Input('result-store', 'data')
+    Output('motion-graph', 'figure'),
+    Output('last-state', 'children'),
+    Input('motion-store', 'data')
 )
 def update_graph(store):
     if not store or not store.get('timestamps'):
-        return go.Figure()
+        return go.Figure(), "Nenhum dado ainda."
 
+    # eixo X para barras (minutos)
     x = [datetime.fromisoformat(ts) for ts in store['timestamps']]
-    trace_correct = go.Bar(
+    y = store['counts']
+
+    trace_motion = go.Bar(
         x=x,
-        y=store['correct'],
-        name='Correto',
-        marker=dict(color='green')
-    )
-    trace_incorrect = go.Bar(
-        x=x,
-        y=store['incorrect'],
-        name='Incorreto',
-        marker=dict(color='red')
+        y=y,
+        name='Movimentos (count)',
+        marker=dict()  # não definimos cores específicas
     )
 
-    fig = go.Figure(data=[trace_correct, trace_incorrect])
-    fig.update_layout(title='Acertos e Erros por Minuto (Lisbon Time)',
-                      xaxis_title='Minuto',
-                      yaxis_title='Contagem',
-                      barmode='group')
-    return fig
+    data = [trace_motion]
+
+    # se houver série de estado, plote como linha (escala 0/1) sobreposta
+    if store.get('state_ts') and store.get('state_vals'):
+        xs = [datetime.fromisoformat(ts) for ts in store['state_ts']]
+        ys = store['state_vals']
+        trace_state = go.Scatter(
+            x=xs,
+            y=ys,
+            mode='lines+markers',
+            name='Estado Lamp (1=ON,0=OFF)',
+            yaxis='y2'
+        )
+        data.append(trace_state)
+
+        layout = go.Layout(
+            title='Movimentos por Minuto (fuso: ' + str(USER_TZ) + ')',
+            xaxis_title='Minuto',
+            yaxis_title='Movimentos',
+            yaxis2=dict(title='Estado Lamp (0/1)', overlaying='y', side='right', range=[-0.1,1.1]),
+            barmode='group'
+        )
+    else:
+        layout = go.Layout(
+            title='Movimentos por Minuto (fuso: ' + str(USER_TZ) + ')',
+            xaxis_title='Minuto',
+            yaxis_title='Movimentos',
+            barmode='group'
+        )
+
+    fig = go.Figure(data=data, layout=layout)
+
+    # último estado textual para exibir
+    last_state_text = "Último estado da lâmpada: desconhecido"
+    if store.get('state_vals'):
+        last_state_text = "Último estado da lâmpada: " + ("ON" if store['state_vals'][-1] == 1 else "OFF")
+
+    return fig, last_state_text
 
 if __name__ == '__main__':
     app.run_server(debug=True, host=DASH_HOST, port=8050)
