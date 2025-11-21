@@ -1,0 +1,110 @@
+# 🏢 Sistema de Gerenciamento de Ambientes de Trabalho  
+### Monitoramento de Presença com Sensor PIR + Integração FIWARE  
+**Autores:**  
+- Ronaldo Aparecido Monteiro Almeida  
+- Lucas Rowlands Abat  
+- Henrique Infanti Coratolo  
+
+---
+
+## 📌 Descrição do Projeto
+
+Este projeto implementa um **sistema inteligente de gerenciamento de ambientes de trabalho**, utilizando:
+
+- **Sensor PIR** para detectar presença humana  
+- **Controle automático de luminosidade (LED / lâmpada virtual)**  
+- **Arduino/ESP32 no Wokwi**  
+- **FIWARE Orion Context Broker + IoT Agent + STH-Comet**  
+- **Dashboard Python** (futuramente) para análise dos dados  
+
+O objetivo é **monitorar a ocupação de ambientes** e **registrar eventos históricos** para otimizar o gerenciamento de salas, energia e fluxo de pessoas.
+
+---
+
+## 🌐 Simulação Online (Wokwi)
+
+O firmware do microcontrolador está disponível no Wokwi:
+
+🔗 **https://wokwi.com/projects/447872594652982273**
+
+Ao abrir, o Wokwi mostra:
+
+- Sensor **PIR**  
+- LED indicando o estado da **luminosidade**  
+- Códigos de integração MQTT/HTTP para FIWARE  
+- Loop enviando dados de presença a cada detecção
+
+---
+
+## 🎯 Objetivo do Sistema
+
+Este sistema permite:
+
+- Detectar automaticamente quando um ambiente está ocupado.  
+- Ligar/desligar a iluminação conforme movimento.  
+- Enviar dados de presença ao **FIWARE**.  
+- Armazenar histórico no **STH-Comet** para análise posterior.  
+- Servir como base para dashboards e sistemas de automação prédios inteligentes.
+
+Isso possibilita aplicações como:
+
+- Monitoramento de ocupação em escritórios  
+- Economia de energia com iluminação automática  
+- Estatísticas de fluxo de pessoas  
+- Dashboards corporativos de produtividade e uso do espaço  
+
+---
+
+## 🧩 Arquitetura da Solução
+
+### 🟦 1. **Dispositivo (Wokwi + Arduino/ESP32)**
+- Lê o sensor PIR  
+- Liga/desliga a luz (LED)  
+- Envia dados via JSON ao IoT Agent FIWARE  
+
+### 🟩 2. **FIWARE IoT Agent**
+- Recebe os dados do dispositivo  
+- Converte para entidades NGSI-LD  
+- Envia ao **Orion Context Broker**
+
+### 🟧 3. **FIWARE Orion Context Broker**
+- Mantém o estado atual do ambiente  
+- Notifica mudanças para o STH-Comet
+
+### 🟪 4. **FIWARE STH-Comet**
+- Armazena o histórico de presença  
+- Gera dados para dashboard/análise
+
+### 🟨 5. **Dashboard Python (futuro)**
+- Gráficos em tempo real  
+- Estatísticas de ocupação  
+- Visualização da eficiência energética  
+
+---
+
+## ⚙️ Fluxo de Funcionamento
+
+1. O sensor **detecta movimento**  
+2. O microcontrolador **liga a luz** (LED)  
+3. Os dados são enviados ao **IoT Agent**  
+4. O IoT Agent atualiza o **Orion Context Broker**  
+5. O Orion envia notificações ao **STH-Comet**  
+6. O STH armazena o histórico para uso no dashboard
+
+---
+
+## 🛠 Tecnologias Utilizadas
+
+- **Arduino / ESP32** (simulado no Wokwi)  
+- **Sensor PIR**  
+- **FIWARE Orion**  
+- **FIWARE IoT Agent (UL)**  
+- **FIWARE STH-Comet**  
+- **MongoDB**  
+- **Docker e Docker Compose**  
+- Python (para dashboard futuro)
+
+---
+
+## 📄 Licença
+Este projeto é de uso acadêmico.
