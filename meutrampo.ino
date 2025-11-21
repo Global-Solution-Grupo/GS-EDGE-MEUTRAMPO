@@ -1,211 +1,217 @@
-// arquivo: pir_lamp_pir_auto_on.ino
+// arquivo: pir_lamp_pir_auto_on_robust.ino
 #include <WiFi.h>
 #include <PubSubClient.h>
 
 // =============================
 // CONFIGURAÇÕES EDITÁVEIS
 // =============================
-const char* default_SSID = "Wokwi-GUEST";
-const char* default_PASSWORD = "";
-const char* default_BROKER_MQTT = "20.163.23.245";
-const int default_BROKER_PORT = 1883;
+const char* WIFI_SSID = "Wokwi-GUEST";
+const char* WIFI_PASS = "";
 
-const char* default_TOPICO_SUBSCRIBE = "/TEF/lamp001/cmd";
-const char* default_TOPICO_PUBLISH_1 = "/TEF/lamp001/attrs";    // publica estado da lâmpada (s|on / s|off)
-const char* default_TOPICO_PUBLISH_2 = "/TEF/lamp001/attrs/m";  // publica motion 1/0
+const char* MQTT_BROKER = "4.172.212.188"; // ajuste conforme seu broker/host
+const int   MQTT_PORT   = 1883;
 
-const char* default_ID_MQTT = "fiware_001";
-const int default_D4 = 2; // saída para LED/lâmpada
+// principais tópicos (onde o esp publica)
+const char* TOPIC_PUB_A = "/TEF/device001/attrs";
+const char* TOPIC_PUB_B = "/smart/device001/attrs";
+const char* TOPIC_PUB_C = "/device001/attrs";
 
-const char* topicPrefix = "lamp001";
+// tópicos de motion
+const char* TOPIC_M_A = "/TEF/device001/attrs/m";
+const char* TOPIC_M_B = "/smart/device001/attrs/m";
+const char* TOPIC_M_C = "/device001/attrs/m";
 
-// Variáveis configuráveis
-char* SSID =      (char*)default_SSID;
-char* PASSWORD =  (char*)default_PASSWORD;
-char* BROKER_MQTT = (char*)default_BROKER_MQTT;
-int   BROKER_PORT = default_BROKER_PORT;
+// iremos subscrever vários tópicos para garantir entrega do comando
+const char* SUB_TOPICS[] = {
+  "/TEF/device001/cmd",
+  "/smart/device001/cmd",
+  "/device001/cmd",
+  "device001/cmd"
+};
+const int SUB_TOPICS_COUNT = sizeof(SUB_TOPICS) / sizeof(SUB_TOPICS[0]);
 
-char* TOPICO_SUBSCRIBE  = (char*)default_TOPICO_SUBSCRIBE;
-char* TOPICO_PUBLISH_1  = (char*)default_TOPICO_PUBLISH_1;
-char* TOPICO_PUBLISH_2  = (char*)default_TOPICO_PUBLISH_2;
-char* ID_MQTT           = (char*)default_ID_MQTT;
-int D4 = default_D4;
+const char* DEVICE_PREFIX = "device001"; // prefixo usado nos comandos: device001@on|
 
-// =============================
-// CONFIGURAÇÃO DO SENSOR PIR
-// =============================
-const int PIR_PIN = 13;
-int lastState = -1;
+const int LED_PIN = 2;   // pino do LED/lâmpada
+const int PIR_PIN = 27;  // seu PIR está em GPIO 27
 
-// =============================
-WiFiClient espClient;
-PubSubClient MQTT(espClient);
-char EstadoSaida = '0'; // '1' = ligado, '0' = desligado (inicia desligado)
+WiFiClient wifiClient;
+PubSubClient mqtt(wifiClient);
 
-void initSerial() {
-    Serial.begin(115200);
-    delay(5);
+char lampState = '0'; // '1' = on, '0' = off
+int lastPIR = -1;
+
+// utility: unique client id
+String makeClientId() {
+  uint32_t id = (uint32_t)ESP.getEfuseMac();
+  return String("esp32_") + String(id & 0xFFFFFF, HEX);
 }
 
-void initWiFi() {
-    delay(10);
-    Serial.println("------ Conexão WI-FI ------");
-    Serial.print("Conectando-se à rede: ");
-    Serial.println(SSID);
-    Serial.println("Aguarde...");
-    reconectWiFi();
+void connectWiFi() {
+  Serial.print("Conectando WiFi...");
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  int tries = 0;
+  while (WiFi.status() != WL_CONNECTED && tries < 200) {
+    delay(100);
+    Serial.print(".");
+    tries++;
+  }
+  Serial.println();
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.print("WiFi conectado. IP: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("WiFi não conectado (timeout).");
+  }
 }
 
-void initMQTT() {
-    MQTT.setServer(BROKER_MQTT, BROKER_PORT);
-    MQTT.setCallback(mqtt_callback);
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  String msg;
+  for (unsigned int i = 0; i < length; i++) msg += (char)payload[i];
+
+  Serial.print("MQTT RECEIVED on [");
+  Serial.print(topic);
+  Serial.print("] => ");
+  Serial.println(msg);
+
+  // aceitar várias formas:
+  // device001@on|  OR  on  OR {"value":""} etc.
+  String onPattern  = String(DEVICE_PREFIX) + "@on|";
+  String offPattern = String(DEVICE_PREFIX) + "@off|";
+
+  // normaliza
+  String trimmed = msg;
+  trimmed.trim();
+
+  if (trimmed.equalsIgnoreCase(onPattern) || trimmed.equalsIgnoreCase("on")) {
+    Serial.println("CMD -> ON recebido");
+    digitalWrite(LED_PIN, HIGH);
+    lampState = '1';
+    // publicar estado em todos tópicos (redundância)
+    mqtt.publish(TOPIC_PUB_A, "s|on");
+    mqtt.publish(TOPIC_PUB_B, "s|on");
+    mqtt.publish(TOPIC_PUB_C, "s|on");
+  } else if (trimmed.equalsIgnoreCase(offPattern) || trimmed.equalsIgnoreCase("off")) {
+    Serial.println("CMD -> OFF recebido");
+    digitalWrite(LED_PIN, LOW);
+    lampState = '0';
+    mqtt.publish(TOPIC_PUB_A, "s|off");
+    mqtt.publish(TOPIC_PUB_B, "s|off");
+    mqtt.publish(TOPIC_PUB_C, "s|off");
+  } else {
+    // alguns IoT Agents enviam payload JSON quando usando /iot/json; verifique e parse
+    if (trimmed.startsWith("{") && trimmed.indexOf("on") >= 0) {
+      digitalWrite(LED_PIN, HIGH);
+      lampState = '1';
+      mqtt.publish(TOPIC_PUB_A, "s|on");
+      mqtt.publish(TOPIC_PUB_B, "s|on");
+      mqtt.publish(TOPIC_PUB_C, "s|on");
+      Serial.println("Heurística: ligando por JSON contendo 'on'.");
+    } else if (trimmed.startsWith("{") && trimmed.indexOf("off") >= 0) {
+      digitalWrite(LED_PIN, LOW);
+      lampState = '0';
+      mqtt.publish(TOPIC_PUB_A, "s|off");
+      mqtt.publish(TOPIC_PUB_B, "s|off");
+      mqtt.publish(TOPIC_PUB_C, "s|off");
+      Serial.println("Heurística: desligando por JSON contendo 'off'.");
+    } else {
+      Serial.println("Mensagem desconhecida recebida (ignorando).");
+    }
+  }
+}
+
+void connectMQTT() {
+  mqtt.setServer(MQTT_BROKER, MQTT_PORT);
+  mqtt.setCallback(mqttCallback);
+
+  String clientId = makeClientId();
+  while (!mqtt.connected()) {
+    Serial.print("Conectando MQTT com clientId ");
+    Serial.print(clientId);
+    Serial.print(" ... ");
+    if (mqtt.connect(clientId.c_str())) {
+      Serial.println("Conectado.");
+      // subscrever em vários tópicos
+      for (int i = 0; i < SUB_TOPICS_COUNT; i++) {
+        mqtt.subscribe(SUB_TOPICS[i]);
+        Serial.print("Subscribed to: ");
+        Serial.println(SUB_TOPICS[i]);
+      }
+    } else {
+      Serial.print("Falha, rc=");
+      Serial.print(mqtt.state());
+      Serial.println(". novo try em 2s.");
+      delay(2000);
+    }
+  }
+}
+
+void publishStateAll(const char* payload) {
+  mqtt.publish(TOPIC_PUB_A, payload);
+  mqtt.publish(TOPIC_PUB_B, payload);
+  mqtt.publish(TOPIC_PUB_C, payload);
 }
 
 void setup() {
-    initSerial();
-    InitOutput();
-    pinMode(PIR_PIN, INPUT);
-    initWiFi();
-    initMQTT();
-    delay(1000);
+  Serial.begin(115200);
+  delay(200);
 
-    // Publica estado inicial (desligado)
-    MQTT.publish(TOPICO_PUBLISH_1, "s|off");
-    Serial.println("Estado inicial publicado: s|off");
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
+  pinMode(PIR_PIN, INPUT);
+
+  // blink init
+  digitalWrite(LED_PIN, HIGH); delay(120);
+  digitalWrite(LED_PIN, LOW);  delay(120);
+  digitalWrite(LED_PIN, HIGH); delay(120);
+  digitalWrite(LED_PIN, LOW);
+
+  connectWiFi();
+  connectMQTT();
+
+  // publica estado inicial desligado
+  publishStateAll("s|off");
+  mqtt.publish(TOPIC_M_A, "0");
+  mqtt.publish(TOPIC_M_B, "0");
+  mqtt.publish(TOPIC_M_C, "0");
 }
 
-// =============================
-// FUNÇÃO DO SENSOR PIR
-// =============================
 void handlePIR() {
-    int state = digitalRead(PIR_PIN);
-
-    if (state != lastState) {
-        lastState = state;
-
-        if (state == HIGH) {
-            Serial.println("Movimento detectado!");
-            // publica movimento
-            MQTT.publish(TOPICO_PUBLISH_2, "1");
-            // Modo C: liga automaticamente a lâmpada (mas não desliga automaticamente)
-            if (EstadoSaida != '1') {
-                digitalWrite(D4, HIGH);  // liga
-                EstadoSaida = '1';
-                MQTT.publish(TOPICO_PUBLISH_1, "s|on");
-                Serial.println("Lamp ligado automaticamente por movimento.");
-            }
-        } else {
-            Serial.println("Sem movimento.");
-            // publica ausência de movimento
-            MQTT.publish(TOPICO_PUBLISH_2, "0");
-            // NÃO desliga a lâmpada automaticamente (Opção C)
-            Serial.println("Lamp NÃO será desligado automaticamente (modo C).");
-        }
+  int state = digitalRead(PIR_PIN);
+  if (state != lastPIR) {
+    lastPIR = state;
+    if (state == HIGH) {
+      Serial.println("PIR: movimento detectado!");
+      // publicar motion
+      mqtt.publish(TOPIC_M_A, "1");
+      mqtt.publish(TOPIC_M_B, "1");
+      mqtt.publish(TOPIC_M_C, "1");
+      // ligar lamp se estiver desligada (modo C)
+      if (lampState != '1') {
+        digitalWrite(LED_PIN, HIGH);
+        lampState = '1';
+        publishStateAll("s|on");
+        Serial.println("Lamp ligada automaticamente (PIR).");
+      }
+    } else {
+      Serial.println("PIR: sem movimento.");
+      mqtt.publish(TOPIC_M_A, "0");
+      mqtt.publish(TOPIC_M_B, "0");
+      mqtt.publish(TOPIC_M_C, "0");
+      Serial.println("Modo C: lâmpada permanece no estado atual.");
     }
+  }
 }
-// =============================
 
 void loop() {
-    VerificaConexoesWiFIEMQTT();
-    EnviaEstadoOutputMQTT();
-    handlePIR();
-    MQTT.loop();
-}
+  if (!mqtt.connected()) connectMQTT();
+  mqtt.loop();
 
-void reconectWiFi() {
-    if (WiFi.status() == WL_CONNECTED)
-        return;
+  handlePIR();
 
-    WiFi.begin(SSID, PASSWORD);
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(200);
-        Serial.print(".");
-    }
-    Serial.println();
-    Serial.println("WiFi conectado com sucesso!");
-    Serial.print("IP: ");
-    Serial.println(WiFi.localIP());
+  // re-publish state periodicamente (mantém orion atualizado)
+  if (lampState == '1') publishStateAll("s|on");
+  else publishStateAll("s|off");
 
-    // Não forçar estado do D4 aqui (estado controlado por InitOutput / comandos)
-}
-
-void mqtt_callback(char* topic, byte* payload, unsigned int length) {
-    String msg;
-
-    for (unsigned int i = 0; i < length; i++) {
-        msg += (char)payload[i];
-    }
-
-    Serial.print("Mensagem recebida: ");
-    Serial.println(msg);
-
-    // formatação esperada: "lamp001@on|" ou "lamp001@off|"
-    String onTopic  = String(topicPrefix) + "@on|";
-    String offTopic = String(topicPrefix) + "@off|";
-
-    if (msg.equals(onTopic)) {
-        digitalWrite(D4, HIGH);
-        EstadoSaida = '1';
-        MQTT.publish(TOPICO_PUBLISH_1, "s|on");
-        Serial.println("Comando MQTT: Ligar (on)");
-    }
-
-    if (msg.equals(offTopic)) {
-        digitalWrite(D4, LOW);
-        EstadoSaida = '0';
-        MQTT.publish(TOPICO_PUBLISH_1, "s|off");
-        Serial.println("Comando MQTT: Desligar (off)");
-    }
-}
-
-void VerificaConexoesWiFIEMQTT() {
-    if (!MQTT.connected())
-        reconnectMQTT();
-    reconectWiFi();
-}
-
-void EnviaEstadoOutputMQTT() {
-    // envia periodicamente o estado atual (reduzido: só quando conectado)
-    if (!MQTT.connected()) return;
-
-    if (EstadoSaida == '1') {
-        MQTT.publish(TOPICO_PUBLISH_1, "s|on");
-        Serial.println("- Estado: LED ligado");
-    } else {
-        MQTT.publish(TOPICO_PUBLISH_1, "s|off");
-        Serial.println("- Estado: LED desligado");
-    }
-
-    // evita delay grande no loop principal; mantenha curto
-    delay(1000);
-}
-
-void InitOutput() {
-    pinMode(D4, OUTPUT);
-    // Inicialmente desligado
-    digitalWrite(D4, LOW);
-    EstadoSaida = '0';
-
-    // pequeno blink de inicialização (2 piscadas)
-    for (int i = 0; i < 2; i++) {
-        digitalWrite(D4, HIGH);
-        delay(150);
-        digitalWrite(D4, LOW);
-        delay(150);
-    }
-}
-
-void reconnectMQTT() {
-    while (!MQTT.connected()) {
-        Serial.print("Tentando conectar ao broker MQTT: ");
-        Serial.println(BROKER_MQTT);
-
-        if (MQTT.connect(ID_MQTT)) {
-            Serial.println("Conectado ao broker!");
-            MQTT.subscribe(TOPICO_SUBSCRIBE);
-        } else {
-            Serial.println("Falha ao conectar. Tentando novamente...");
-            delay(2000);
-        }
-    }
+  delay(1000);
 }
