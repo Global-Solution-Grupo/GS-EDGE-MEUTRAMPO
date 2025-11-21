@@ -1,8 +1,7 @@
 {
   "info": {
-    "name": "FIWARE - Device001 (Lamp + PIR) - FULL",
-    "_postman_id": "fiware-device001-full",
-    "description": "Coleção completa compatível com ESP32 + IoT Agent MQTT + Orion + STH Comet",
+    "_postman_id": "fiware-device001-final-collection",
+    "name": "FIWARE - Device001 (Lamp + PIR) - FINAL",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -15,7 +14,11 @@
       "item": [
         {
           "name": "1. Health (IoT Agent)",
-          "request": { "method": "GET", "url": "http://{{host}}:4041/iot/about" }
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "http://{{host}}:4041/iot/about"
+          }
         },
         {
           "name": "2. List Service Groups",
@@ -66,7 +69,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"devices\": [\n    {\n      \"device_id\": \"device001\",\n      \"entity_name\": \"urn:ngsi-ld:Device:001\",\n      \"entity_type\": \"Device\",\n      \"protocol\": \"PDI-IoTA-UltraLight\",\n      \"transport\": \"MQTT\",\n      \"timezone\": \"America/Sao_Paulo\",\n      \"attributes\": [\n        { \"object_id\": \"s\", \"name\": \"state\", \"type\": \"Text\" },\n        { \"object_id\": \"m\", \"name\": \"motion\", \"type\": \"Integer\" },\n        { \"object_id\": \"l\", \"name\": \"luminosity\", \"type\": \"Integer\" }\n      ],\n      \"commands\": [\n        { \"name\": \"on\", \"type\": \"command\", \"object_id\": \"on\" },\n        { \"name\": \"off\", \"type\": \"command\", \"object_id\": \"off\" }\n      ]\n    }\n  ]\n}"
+              "raw": "{\n  \"devices\": [\n    {\n      \"device_id\": \"device001\",\n      \"entity_name\": \"urn:ngsi-ld:Device:001\",\n      \"entity_type\": \"Device\",\n      \"protocol\": \"PDI-IoTA-UltraLight\",\n      \"transport\": \"MQTT\",\n      \"timezone\": \"America/Sao_Paulo\",\n      \"attributes\": [\n        { \"object_id\": \"s\", \"name\": \"state\", \"type\": \"Text\" },\n        { \"object_id\": \"m\", \"name\": \"motion\", \"type\": \"Integer\" }\n      ],\n      \"commands\": [\n        { \"name\": \"on\", \"type\": \"command\", \"object_id\": \"on\" },\n        { \"name\": \"off\", \"type\": \"command\", \"object_id\": \"off\" }\n      ]\n    }\n  ]\n}"
             },
             "url": "http://{{host}}:4041/iot/devices"
           }
@@ -94,39 +97,7 @@
           }
         },
         {
-          "name": "8. CMD ON (via IoT Agent /iot/json)",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "fiware-service", "value": "smart" },
-              { "key": "fiware-servicepath", "value": "/" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"devices\": [\n    { \"device_id\": \"device001\", \"commands\": [ { \"name\": \"on\", \"value\": \"\" } ] }\n  ]\n}"
-            },
-            "url": "http://{{host}}:4041/iot/json"
-          }
-        },
-        {
-          "name": "9. CMD OFF (via IoT Agent /iot/json)",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "fiware-service", "value": "smart" },
-              { "key": "fiware-servicepath", "value": "/" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"devices\": [\n    { \"device_id\": \"device001\", \"commands\": [ { \"name\": \"off\", \"value\": \"\" } ] }\n  ]\n}"
-            },
-            "url": "http://{{host}}:4041/iot/json"
-          }
-        },
-        {
-          "name": "10. CMD ON (via IoT Agent /v2/op/update) — RECOMENDADO",
+          "name": "8. CMD ON (via IoT Agent /v2/op/update) — RECOMENDADO",
           "request": {
             "method": "POST",
             "header": [
@@ -142,7 +113,7 @@
           }
         },
         {
-          "name": "11. CMD OFF (via /v2/op/update) — RECOMENDADO",
+          "name": "9. CMD OFF (via /v2/op/update) — RECOMENDADO",
           "request": {
             "method": "POST",
             "header": [
@@ -156,20 +127,59 @@
             },
             "url": "http://{{host}}:4041/v2/op/update"
           }
+        },
+        {
+          "name": "10. CMD ON (via /iot/json) — alternate",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "fiware-service", "value": "smart" },
+              { "key": "fiware-servicepath", "value": "/" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"devices\": [ { \"device_id\": \"device001\", \"commands\": [ { \"name\": \"on\", \"value\": \"\" } ] } ] }"
+            },
+            "url": "http://{{host}}:4041/iot/json"
+          }
+        },
+        {
+          "name": "11. CMD OFF (via /iot/json) — alternate",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "fiware-service", "value": "smart" },
+              { "key": "fiware-servicepath", "value": "/" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"devices\": [ { \"device_id\": \"device001\", \"commands\": [ { \"name\": \"off\", \"value\": \"\" } ] } ] }"
+            },
+            "url": "http://{{host}}:4041/iot/json"
+          }
         }
       ]
     },
-
     {
       "name": "Orion Context Broker",
       "item": [
         {
           "name": "1. Version",
-          "request": { "method": "GET", "url": "http://{{host}}:1026/version" }
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "http://{{host}}:1026/version"
+          }
         },
         {
           "name": "2. Health (Orion)",
-          "request": { "method": "GET", "url": "http://{{host}}:1026/v2/health" }
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "http://{{host}}:1026/v2/health"
+          }
         },
         {
           "name": "3. Read Entity",
@@ -196,7 +206,6 @@
         }
       ]
     },
-
     {
       "name": "STH Comet",
       "item": [
@@ -204,6 +213,10 @@
           "name": "1. Health (STH)",
           "request": {
             "method": "GET",
+            "header": [
+              { "key": "fiware-service", "value": "smart" },
+              { "key": "fiware-servicepath", "value": "/" }
+            ],
             "url": "http://{{host}}:8666/STH/v1/health"
           }
         },
@@ -227,17 +240,6 @@
               { "key": "fiware-servicepath", "value": "/" }
             ],
             "url": "http://{{host}}:8666/STH/v1/contextEntities/type/Device/id/urn:ngsi-ld:Device:001/attributes/state?lastN=50"
-          }
-        },
-        {
-          "name": "4. Get Luminosity (last 50)",
-          "request": {
-            "method": "GET",
-            "header": [
-              { "key": "fiware-service", "value": "smart" },
-              { "key": "fiware-servicepath", "value": "/" }
-            ],
-            "url": "http://{{host}}:8666/STH/v1/contextEntities/type/Device/id/urn:ngsi-ld:Device:001/attributes/luminosity?lastN=50"
           }
         }
       ]
