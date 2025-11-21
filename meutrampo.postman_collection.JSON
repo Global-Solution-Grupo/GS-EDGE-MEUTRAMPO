@@ -1,31 +1,26 @@
 {
   "info": {
-    "name": "FIWARE - Lamp + PIR (Corrigido)",
-    "_postman_id": "fiware-lamp-pir-rebuilt",
+    "name": "FIWARE - Device001 (Lamp + PIR) - robust",
+    "_postman_id": "fiware-device001-robust",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
-
   "variable": [
-    { "key": "host", "value": "46.17.108.113" },
+    { "key": "host", "value": "4.172.212.188" },
     { "key": "apikey", "value": "TEF" }
   ],
-
   "item": [
-
     {
       "name": "IoT Agent",
       "item": [
-
         {
-          "name": "1. Health",
+          "name": "1. Health (IoT Agent)",
           "request": {
             "method": "GET",
             "url": "http://{{host}}:4041/iot/about"
           }
         },
-
         {
-          "name": "2. Create Service Group",
+          "name": "2. Create Service Group (apikey TEF -> smart)",
           "request": {
             "method": "POST",
             "header": [
@@ -40,9 +35,8 @@
             "url": "http://{{host}}:4041/iot/services"
           }
         },
-
         {
-          "name": "3. Create Device device001",
+          "name": "3. Create Device device001 (MQTT UltraLight)",
           "request": {
             "method": "POST",
             "header": [
@@ -52,15 +46,13 @@
             ],
             "body": {
               "mode": "raw",
-              "raw":
-"{\n  \"devices\": [\n    {\n      \"device_id\": \"device001\",\n      \"entity_name\": \"urn:ngsi-ld:Device:001\",\n      \"entity_type\": \"Device\",\n      \"protocol\": \"PDI-IoTA-UltraLight\",\n      \"transport\": \"MQTT\",\n      \"attributes\": [\n        { \"object_id\": \"s\", \"name\": \"state\", \"type\": \"Text\" },\n        { \"object_id\": \"m\", \"name\": \"motion\", \"type\": \"Integer\" },\n        { \"object_id\": \"l\", \"name\": \"luminosity\", \"type\": \"Integer\" }\n      ],\n      \"commands\": [\n        { \"name\": \"on\", \"type\": \"command\" },\n        { \"name\": \"off\", \"type\": \"command\" }\n      ]\n    }\n  ]\n}"
+              "raw": "{\n  \"devices\": [\n    {\n      \"device_id\": \"device001\",\n      \"entity_name\": \"urn:ngsi-ld:Device:001\",\n      \"entity_type\": \"Device\",\n      \"protocol\": \"PDI-IoTA-UltraLight\",\n      \"transport\": \"MQTT\",\n      \"attributes\": [\n        { \"object_id\": \"s\", \"name\": \"state\", \"type\": \"Text\" },\n        { \"object_id\": \"m\", \"name\": \"motion\", \"type\": \"Integer\" },\n        { \"object_id\": \"l\", \"name\": \"luminosity\", \"type\": \"Integer\" }\n      ],\n      \"commands\": [\n        { \"name\": \"on\", \"type\": \"command\" },\n        { \"name\": \"off\", \"type\": \"command\" }\n      ]\n    }\n  ]\n}"
             },
             "url": "http://{{host}}:4041/iot/devices"
           }
         },
-
         {
-          "name": "4. List Devices",
+          "name": "4. List Devices (IoT Agent)",
           "request": {
             "method": "GET",
             "header": [
@@ -70,9 +62,8 @@
             "url": "http://{{host}}:4041/iot/devices"
           }
         },
-
         {
-          "name": "5. Delete device001",
+          "name": "5. Delete device001 (IoT Agent)",
           "request": {
             "method": "DELETE",
             "header": [
@@ -81,22 +72,54 @@
             ],
             "url": "http://{{host}}:4041/iot/devices/device001"
           }
+        },
+        {
+          "name": "6. Send Command -> ON (via IoT Agent /iot/json)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "fiware-service", "value": "smart" },
+              { "key": "fiware-servicepath", "value": "/" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"devices\": [\n    { \"device_id\": \"device001\", \"commands\": [ { \"name\": \"on\", \"value\": \"\" } ] }\n  ]\n}"
+            },
+            "url": "http://{{host}}:4041/iot/json"
+          }
+        },
+        {
+          "name": "7. Send Command -> OFF (via IoT Agent /iot/json)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "fiware-service", "value": "smart" },
+              { "key": "fiware-servicepath", "value": "/" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"devices\": [\n    { \"device_id\": \"device001\", \"commands\": [ { \"name\": \"off\", \"value\": \"\" } ] }\n  ]\n}"
+            },
+            "url": "http://{{host}}:4041/iot/json"
+          }
         }
       ]
     },
-
     {
-      "name": "Orion",
+      "name": "Orion Context Broker",
       "item": [
         {
           "name": "1. Version",
           "request": { "method": "GET", "url": "http://{{host}}:1026/version" }
         },
         {
-          "name": "2. Read Device Entity",
+          "name": "2. Read Entity (Orion)",
           "request": {
             "method": "GET",
             "header": [
+              { "key": "Accept", "value": "application/json" },
               { "key": "fiware-service", "value": "smart" },
               { "key": "fiware-servicepath", "value": "/" }
             ],
@@ -104,69 +127,50 @@
           }
         },
         {
-          "name": "3. Command ON",
+          "name": "3. Send Command (Orion -> IoT Agent) *alternate* (NOT recommended)",
           "request": {
-            "method": "PATCH",
+            "method": "POST",
             "header": [
               { "key": "Content-Type", "value": "application/json" },
               { "key": "fiware-service", "value": "smart" },
               { "key": "fiware-servicepath", "value": "/" }
             ],
-            "body": { "mode": "raw", "raw": "{ \"on\": { \"type\": \"command\", \"value\": \"\" } }" },
-            "url": "http://{{host}}:1026/v2/entities/urn:ngsi-ld:Device:001/attrs"
-          }
-        },
-        {
-          "name": "4. Command OFF",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "fiware-service", "value": "smart" },
-              { "key": "fiware-servicepath", "value": "/" }
-            ],
-            "body": { "mode": "raw", "raw": "{ \"off\": { \"type\": \"command\", \"value\": \"\" } }" },
-            "url": "http://{{host}}:1026/v2/entities/urn:ngsi-ld:Device:001/attrs"
+            "body": { "mode": "raw", "raw": "{ \"value\": \"\" }" },
+            "url": "http://{{host}}:1026/v2/entities/urn:ngsi-ld:Device:001/attrs/on"
           }
         }
       ]
     },
-
     {
-      "name": "STH-Comet",
+      "name": "STH Comet",
       "item": [
-
         {
-          "name": "1. Health",
+          "name": "1. Health (STH)",
           "request": {
             "method": "GET",
             "url": "http://{{host}}:8666/STH/v1/health"
           }
         },
-
         {
-          "name": "2. motion (history last 50)",
+          "name": "2. Get recent motion (STH)",
           "request": {
             "method": "GET",
             "header": [
               { "key": "fiware-service", "value": "smart" },
               { "key": "fiware-servicepath", "value": "/" }
             ],
-            "url":
-"http://{{host}}:8666/STH/v1/contextEntities/type/Device/id/urn:ngsi-ld:Device:001/attributes/motion?lastN=50"
+            "url": "http://{{host}}:8666/STH/v1/contextEntities/type/Device/id/urn:ngsi-ld:Device:001/attributes/motion?lastN=50"
           }
         },
-
         {
-          "name": "3. state (history last 50)",
+          "name": "3. Get recent state (STH)",
           "request": {
             "method": "GET",
             "header": [
               { "key": "fiware-service", "value": "smart" },
               { "key": "fiware-servicepath", "value": "/" }
             ],
-            "url":
-"http://{{host}}:8666/STH/v1/contextEntities/type/Device/id/urn:ngsi-ld:Device:001/attributes/state?lastN=50"
+            "url": "http://{{host}}:8666/STH/v1/contextEntities/type/Device/id/urn:ngsi-ld:Device:001/attributes/state?lastN=50"
           }
         }
       ]
